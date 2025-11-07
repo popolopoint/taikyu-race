@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ゼッケン音声入力リスト</title>
+<style>
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+    background: #fafafa;
+    text-align: center;
+    padding: 20px;
+  }
+  h1 {
+    font-size: 1.4em;
+    margin-bottom: 10px;
+  }
+  button {
+    font-size: 1.2em;
+    padding: 10px 20px;
+    margin: 10px;
+    border: none;
+    border-radius: 8px;
+    background: #0078d7;
+    color: white;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: #ccc;
+  }
+  ul {
+    list-style: none;
+    padding: 0;
+    margin-top: 20px;
+    text-align: left;
+    display: inline-block;
+  }
+  li {
+    font-size: 1.3em;
+    margin: 8px 0;
+    display: flex;
+    align-items: center;
+  }
+  .circle {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    margin-right: 10px;
+  }
+  .赤 { background: #ff0000; }
+  .青 { background: #0070ff; }
+  .黄色 { background: #ffcc00; }
+  .緑 { background: #00b050; }
+  .ピンク { background: #ff66b2; }
+  .オレンジ { background: #ff8800; }
+  #status {
+    color: #555;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h1>🎙️ ゼッケン音声入力リスト</h1>
+<button id="startBtn">音声入力開始</button>
+<button id="stopBtn" disabled>停止</button>
+<div id="status">待機中...</div>
+<ul id="resultList"></ul>
+
+<script>
+const colors = ["赤", "青", "黄色", "緑", "ピンク", "オレンジ"];
+let recognizing = false;
+let recognition;
+
+if (!('webkitSpeechRecognition' in window)) {
+  alert("このブラウザは音声認識に対応していません。Google Chromeをお使いください。");
+} else {
+  recognition = new webkitSpeechRecognition();
+  recognition.lang = "ja-JP";
+  recognition.continuous = true;
+  recognition.interimResults = false;
+
+  recognition.onresult = (event) => {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        const transcript = event.results[i][0].transcript.trim();
+        processSpeech(transcript);
+      }
+    }
+  };
+
+  recognition.onstart = () => {
+    recognizing = true;
+    document.getElementById("status").textContent = "🎤 音声認識中...";
+    document.getElementById("startBtn").disabled = true;
+    document.getElementById("stopBtn").disabled = false;
+  };
+
+  recognition.onend = () => {
+    recognizing = false;
+    document.getElementById("status").textContent = "停止しました。";
+    document.getElementById("startBtn").disabled = false;
+    document.getElementById("stopBtn").disabled = true;
+  };
+
+  document.getElementById("startBtn").onclick = () => {
+    recognition.start();
+  };
+
+  document.getElementById("stopBtn").onclick = () => {
+    recognition.stop();
+  };
+}
+
+function processSpeech(text) {
+  // 例：「赤１」「青の２番」「黄色3」などを抽出
+  for (const color of colors) {
+    const regex = new RegExp(`${color}(の)?\\s*(\\d+)`);
+    const match = text.match(regex);
+    if (match) {
+      addResult(color, match[2]);
+    }
+  }
+}
+
+function addResult(color, number) {
+  const li = document.createElement("li");
+  const circle = document.createElement("div");
+  circle.className = "circle " + color;
+  const text = document.createTextNode(`${color} ${number}`);
+  li.appendChild(circle);
+  li.appendChild(text);
+  document.getElementById("resultList").appendChild(li);
+}
+</script>
+
+</body>
+</html>
