@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>周回順位カウント（リアルタイム対応）</title>
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  button {
+    font-size: 28px;
+    padding: 25px 50px;
+    margin-right: 10px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+  }
+  table { border-collapse: collapse; margin-top: 20px; width: 70%; }
+  th, td { border: 1px solid #aaa; padding: 5px; text-align: center; }
+  .赤 { background-color: #ff9999; }
+  .青 { background-color: #99ccff; }
+  .黄 { background-color: #ffff99; }
+  .緑 { background-color: #99ff99; }
+  .オレンジ { background-color: #ffcc99; }
+  .color-circle {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+<h1>周回順位カウント（リアルタイム対応）</h1>
+<button id="startBtn">音声入力開始</button>
+<button id="stopBtn">音声入力停止</button>
+
+<h2>トータル順位</h2>
+<table id="totalTable">
+  <thead>
+    <tr><th>順位</th><th>ゼッケン</th><th>クラス</th><th>周回数</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<h2>クラス別順位</h2>
+<div id="classTables"></div>
+
+<script>
+const racers = [
+  { number: 1, color: '赤', laps: 0, timestamps: [] },
+  { number: 2, color: '青', laps: 0, timestamps: [] },
+  { number: 3, color: '黄', laps: 0, timestamps: [] },
+  { number: 4, color: '緑', laps: 0, timestamps: [] },
+  { number: 5, color: 'オレンジ', laps: 0, timestamps: [] }
+];
+
+const colors = ['赤','青','黄','緑','オレンジ'];
+
+let lastProcessedText = "";  // 重複カウント防止
+
+// 音声認識セット
+let recognition;
+if ('webkitSpeechRecognition' in window) {
+  recognition = new webkitSpeechRecognition();
+} else if ('SpeechRecognition' in window) {
+  recognition = new SpeechRecognition();
+} else {
+  alert("このブラウザでは音声認識が使えません");
+}
+
+recognition.lang = 'ja-JP';
+recognition.continuous = true;
+recognition.interimResults = true;  // 暫定結果も取得
+
+recognition.onresult = function(event) {
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    const text = event.results[i][0].transcript.trim();
+    if (text && text !== lastProcessedText) {
+      lastProcessedText = text;
+      processInput(text);
+    }
+  }
+};
+
+// ボタン操作
+document.getElementById('startBtn').onclick = () => {
+  lastProcessedText = "";
+  recognition.start();
+};
+document.getElementById('stopBtn').onclick = () => recognition.stop();
+
+// 漢数字変換
+function kanjiToNumber(str) {
+  const map = { '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9, '十':10 };
+  return map[str] || parseInt(str);
+}
+
+// 音声入力処理
+function processInput(text) {
+  text = text.replace('の','').replace('番','');
+  const match = text.match(/(赤|青|黄|緑|オレンジ)(\d+|[一二三四五六七八九十])/);
+  if (match) {
+    const color = match[1];
+    const numStr = match[2];
+    const number = isNaN(numStr) ? kanjiToNumber(numStr) : parseInt(numStr);
+    const racer = racers.find(r => r.number===number && r.color===color);
+    if (racer) {
+      racer.laps++;
+      racer.timestamps.push(Date.now());
+      updateTables();
+    }
+  }
+}
+
+// テーブル更新
+function updateTables() {
+  updateTotalTable();
+  updateClassTables();
+}
+
+// トータル順位
+function updateTotalTable() {
+  const tbody = document.querySelector('#totalTable tbody');
+  tbody.innerHTML = '';
+  const sorted = [...racers].sort((a,b) => {
+    if (b.laps!==a.laps) return b.laps - a.laps;
+    return a.timestamps[a.timestamps.length-1] - b.timestamps[b.timestamps.length-1];
+  });
+  sorted.forEach((racer,index) => {
+    const tr = document.createElement('tr');
+    tr.className = racer.color;
+    tr.innerHTML = `<td>${index+1}</td>
+                    <td><span class="color-circle" style="background:${racer.color};"></span>${racer.number}</td>
+                    <td>${racer.color}</td>
+                    <td>${racer.laps}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// クラス別順位
+function updateClassTables() {
+  const container = document.getElementById('classTables');
+  container.innerHTML = '';
+  colors.forEach(color => {
+    const classRacers = racers.filter(r => r.color===color)
+      .sort((a,b) => {
+        if (b.laps!==a.laps) return b.laps - a.laps;
+        return a.timestamps[a.timestamps.length-1] - b.timestamps[b.timestamps.length-1];
+      });
+    if (classRacers.length===0) return;
+    const table = document.createElement('table');
+    table.innerHTML = `<thead><tr><th>${color}クラス順位</th><th>ゼッケン</th><th>周回数</th></tr></thead><tbody></tbody>`;
+    const tbody = table.querySelector('tbody');
+    classRacers.forEach((racer,idx) => {
+      const tr = document.createElement('tr');
+      tr.className = racer.color;
+      tr.innerHTML = `<td>${idx+1}</td>
+                      <td><span class="color-circle" style="background:${racer.color};"></span>${racer.number}</td>
+                      <td>${racer.laps}</td>`;
+      tbody.appendChild(tr);
+    });
+    container.appendChild(table);
+  });
+}
+</script>
+
+</body>
+</html>
