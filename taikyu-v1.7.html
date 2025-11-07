@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>周回順位カウント（色丸表示のみ）</title>
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  button {
+    font-size: 28px;
+    padding: 25px 50px;
+    margin-right: 10px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+  }
+  .color-circle {
+    display: inline-block;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    border: 1px solid #333;
+  }
+  #entryColors { margin-top: 10px; margin-bottom: 20px; }
+</style>
+</head>
+<body>
+<h1>周回順位カウント（色丸表示のみ）</h1>
+<button id="startBtn">音声入力開始</button>
+<button id="stopBtn">音声入力停止</button>
+
+<h2>エントリー色</h2>
+<div id="entryColors"></div>
+
+<script>
+// 登録色
+const racers = [
+  { number: 1, color: '赤', laps: 0, timestamps: [] },
+  { number: 2, color: '青', laps: 0, timestamps: [] },
+  { number: 3, color: '黄', laps: 0, timestamps: [] },
+  { number: 4, color: '緑', laps: 0, timestamps: [] },
+  { number: 5, color: 'オレンジ', laps: 0, timestamps: [] }
+];
+
+const colors = [...new Set(racers.map(r=>r.color))];
+
+// 最初に登録色の○だけ表示
+function showEntryColors() {
+  const div = document.getElementById('entryColors');
+  div.innerHTML = '';
+  colors.forEach(color => {
+    const span = document.createElement('span');
+    span.className = 'color-circle';
+    span.style.background = color;
+    div.appendChild(span);
+  });
+}
+showEntryColors();
+
+// 音声認識設定（ここでは丸表示だけで順位表は省略）
+let recognition;
+if ('webkitSpeechRecognition' in window) {
+  recognition = new webkitSpeechRecognition();
+} else if ('SpeechRecognition' in window) {
+  recognition = new SpeechRecognition();
+} else {
+  alert("このブラウザでは音声認識が使えません");
+}
+
+recognition.lang = 'ja-JP';
+recognition.continuous = true;
+recognition.interimResults = true;
+
+recognition.onresult = function(event) {
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    const text = event.results[i][0].transcript.trim();
+    if (text) {
+      console.log("認識:", text);
+      // ここで順位や周回数を更新する処理を追加可能
+    }
+  }
+};
+
+document.getElementById('startBtn').onclick = () => recognition.start();
+document.getElementById('stopBtn').onclick = () => recognition.stop();
+
+</script>
+
+</body>
+</html>
