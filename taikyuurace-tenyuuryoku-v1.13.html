@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lap Rank v1.13</title>
+<style>
+  body { font-family: sans-serif; margin: 10px; text-align: center; background: #f8f8f8; }
+  h2 { margin-bottom: 10px; }
+
+  .color-buttons button {
+    width: 48px; height: 48px; border-radius: 50%; margin: 4px; border: none;
+  }
+  .color-red { background: red; }
+  .color-blue { background: blue; }
+  .color-yellow { background: yellow; }
+  .color-green { background: green; }
+  .color-pink { background: pink; }
+  .color-orange { background: orange; }
+  .color-none { background: #ccc; }
+
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 220px; margin: 10px auto; }
+  .keypad button { height: 55px; font-size: 18px; border-radius: 8px; border: 1px solid #ccc; background: white; }
+
+  .large-btn { height: 65px; font-size: 18px; border-radius: 8px; margin: 5px; }
+  .return-btn { width: 150px; background: #4CAF50; color: white; }
+  .bs-btn, .voice-btn { width: 100px; background: #e0e0e0; }
+
+  #currentInput {
+    display: inline-block;
+    min-width: 80px;
+    min-height: 30px;
+    border: 2px solid #555;
+    border-radius: 6px;
+    background: #fff;
+    line-height: 30px;
+    padding: 0 10px;
+    margin-left: 8px;
+  }
+
+  #history, #ranking, #classRanking {
+    max-height: 200px;
+    overflow-y: auto;
+    margin: 10px auto;
+    width: 90%;
+    text-align: left;
+    background: #fff;
+    padding: 5px;
+    border-radius: 8px;
+  }
+
+  .action-buttons button {
+    font-size: 12px;
+    margin: 2px;
+    padding: 5px 8px;
+    border-radius: 5px;
+    background: #ddd;
+    border: none;
+  }
+
+  .modal {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4); display: none; justify-content: center; align-items: center;
+  }
+  .modal-content {
+    background: #fff; padding: 20px; border-radius: 10px; width: 250px;
+  }
+</style>
+</head>
+<body>
+<h2>周回順位アプリ v1.13</h2>
+
+<div class="action-buttons">
+  <button id="classBtn">クラス</button>
+  <button id="allBtn">全体順位</button>
+  <button id="hideBtn">隠す</button>
+  <button id="csvBtn">CSV</button>
+</div>
+
+<div class="color-buttons">
+  <button class="color-red" data-color="赤"></button>
+  <button class="color-blue" data-color="青"></button>
+  <button class="color-yellow" data-color="黄"></button>
+  <button class="color-green" data-color="緑"></button>
+  <button class="color-pink" data-color="桃"></button>
+  <button class="color-orange" data-color="橙"></button>
+  <button class="color-none" data-color="無"></button>
+</div>
+
+<p>入力中：<span id="currentInput"></span></p>
+
+<div class="keypad" id="keypad"></div>
+
+<div>
+  <button class="bs-btn large-btn" id="bsBtn">BS</button>
+  <button class="voice-btn large-btn" id="voiceBtn">🎤音声</button>
+  <button class="return-btn large-btn" id="returnBtn">リターン</button>
+</div>
+
+<h3>入力履歴</h3>
+<div id="history"></div>
+
+<div id="ranking" style="display:none;"></div>
+<div id="classRanking" style="display:none;"></div>
+
+<!-- 訂正モーダル -->
+<div class="modal" id="editModal">
+  <div class="modal-content">
+    <h4>訂正／削除</h4>
+    <label>色：
+      <select id="editColor">
+        <option value="赤">赤</option><option value="青">青</option><option value="黄">黄</option>
+        <option value="緑">緑</option><option value="桃">桃</option><option value="橙">橙</option>
+        <option value="無">無</option>
+      </select>
+    </label><br><br>
+    <label>番号：<input type="number" id="editNumber" /></label><br><br>
+    <button id="saveEdit">保存</button>
+    <button id="deleteEntry">削除</button>
+    <button id="cancelEdit">キャンセル</button>
+  </div>
+</div>
+
+<script>
+let selectedColor = null;
+let currentNumber = "";
+let entries = [];
+let editingIndex = null;
+let recognition;
+let isVoiceActive = false;
+
+// カラーボタン処理
+document.querySelectorAll(".color-buttons button").forEach(btn=>{
+  btn.onclick=()=>{ selectedColor=btn.dataset.color; };
+});
+
+// テンキー生成
+const keypad=document.getElementById("keypad");
+[1,2,3,4,5,6,7,8,9,0].forEach(num=>{
+  const b=document.createElement("button");
+  b.textContent=num;
+  b.onclick=()=>{ currentNumber+=num; updateCurrentInput(); };
+  keypad.appendChild(b);
+});
+
+// 現在入力表示更新
+function updateCurrentInput(){
+  document.getElementById("currentInput").textContent=
+    (selectedColor?selectedColor+" ":"") + currentNumber;
+}
+
+// リターン処理
+document.getElementById("returnBtn").onclick=()=>{
+  if(selectedColor && currentNumber){
+    entries.push({color:selectedColor, number:currentNumber, time:Date.now()});
+    currentNumber="";
+    updateCurrentInput();
+    showHistory();
+    stopVoice();
+  }
+};
+
+// BS
+document.getElementById("bsBtn").onclick=()=>{
+  currentNumber=currentNumber.slice(0,-1);
+  updateCurrentInput();
+};
+
+// 音声入力
+document.getElementById("voiceBtn").onclick=()=>{
+  if(!('webkitSpeechRecognition' in window)){
+    alert("音声認識はこのブラウザでサポートされていません。");
+    return;
+  }
+  if(!recognition){
+    recognition=new webkitSpeechRecognition();
+    recognition.lang='ja-JP';
+    recognition.interimResults=false;
+    recognition.onresult=(e)=>{
+      const text=e.results[0][0].transcript.replace(/\D/g,"");
+      if(text){ currentNumber=text; updateCurrentInput(); }
+    };
+    recognition.onend=()=>{ if(isVoiceActive){ recognition.start(); } };
+  }
+  isVoiceActive=!isVoiceActive;
+  if(isVoiceActive){ recognition.start(); } else { recognition.stop(); }
+};
+
+function stopVoice(){ if(recognition){ isVoiceActive=false; recognition.stop(); } }
+
+// 履歴表示（スワイプ対応）
+function showHistory(){
+  const container=document.getElementById("history");
+  container.innerHTML="";
+  entries.forEach((e,i)=>{
+    const div=document.createElement("div");
+    div.textContent=`${i+1}. ${e.color} ${e.number}`;
+    div.style.padding="5px";
+    div.dataset.index=i;
+
+    // スワイプ検出
+    let startX=0;
+    div.addEventListener("touchstart",(ev)=>{ startX=ev.touches[0].clientX; });
+    div.addEventListener("touchend",(ev)=>{
+      const endX=ev.changedTouches[0].clientX;
+      if(startX-endX>50){ openEditModal(i); }
+    });
+
+    container.appendChild(div);
+  });
+}
+
+// モーダル操作
+function openEditModal(i){
+  editingIndex=i;
+  const e=entries[i];
+  document.getElementById("editColor").value=e.color;
+  document.getElementById("editNumber").value=e.number;
+  document.getElementById("editModal").style.display="flex";
+}
+document.getElementById("cancelEdit").onclick=()=>{ document.getElementById("editModal").style.display="none"; };
+document.getElementById("saveEdit").onclick=()=>{
+  entries[editingIndex].color=document.getElementById("editColor").value;
+  entries[editingIndex].number=document.getElementById("editNumber").value;
+  document.getElementById("editModal").style.display="none";
+  showHistory();
+};
+document.getElementById("deleteEntry").onclick=()=>{
+  entries.splice(editingIndex,1);
+  document.getElementById("editModal").style.display="none";
+  showHistory();
+};
+
+// 全体順位
+document.getElementById("allBtn").onclick=()=>{
+  const list=[...entries];
+  list.sort((a,b)=>{
+    const ac=list.filter(e=>e.number===a.number).length;
+    const bc=list.filter(e=>e.number===b.number).length;
+    return bc-ac || a.time-b.time;
+  });
+  const r=document.getElementById("ranking");
+  r.innerHTML="<h3>全体順位</h3>"+list.map((e,i)=>`${i+1}. ${e.color} ${e.number}`).join("<br>");
+  r.style.display="block";
+};
+
+// クラス別
+document.getElementById("classBtn").onclick=()=>{
+  const color=prompt("色を入力（例：赤）");
+  if(!color)return;
+  const list=entries.filter(e=>e.color===color);
+  list.sort((a,b)=>{
+    const ac=list.filter(e=>e.number===a.number).length;
+    const bc=list.filter(e=>e.number===b.number).length;
+    return bc-ac || a.time-b.time;
+  });
+  const r=document.getElementById("classRanking");
+  r.innerHTML=`<h3>${color}クラス順位</h3>`+list.map((e,i)=>`${i+1}. ${e.color} ${e.number}`).join("<br>");
+  r.style.display="block";
+};
+
+// 隠す
+document.getElementById("hideBtn").onclick=()=>{
+  document.getElementById("ranking").style.display="none";
+  document.getElementById("classRanking").style.display="none";
+};
+
+// CSV出力
+document.getElementById("csvBtn").onclick=()=>{
+  let csv="順位,色,番号\n";
+  entries.forEach((e,i)=>{ csv+=`${i+1},${e.color},${e.number}\n`; });
+  const blob=new Blob([csv],{type:"text/csv"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download="result.csv"; a.click();
+  URL.revokeObjectURL(url);
+};
+</script>
+</body>
+</html>
