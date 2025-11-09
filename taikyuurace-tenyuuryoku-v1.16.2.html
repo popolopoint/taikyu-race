@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>周回走アプリ by Popolo v1.16.2</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Kaku Gothic ProN", "メイリオ", Meiryo, sans-serif; margin: 10px; text-align: center; }
+  .option-buttons { margin-top: 10px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
+  .option-buttons button{ font-size:14px; padding:8px 12px; border-radius:6px; }
+  .color-buttons { margin-top:10px; display:flex; justify-content:center; gap:6px; flex-wrap:wrap; }
+  .color-buttons button { width:50px; height:50px; border-radius:50%; border:none; cursor:pointer; }
+  .color-red{ background:red } .color-blue{ background:blue } .color-yellow{ background:yellow }
+  .color-green{ background:green } .color-pink{ background:pink } .color-orange{ background:orange }
+  .color-none{ background:#ccc }
+  .keypad { display:grid; grid-template-columns:repeat(3,70px); gap:10px; justify-content:center; margin-top:10px; }
+  .keypad button{ height:60px; font-size:20px; border-radius:8px; }
+  .special-keys{ display:flex; justify-content:center; gap:15px; margin-top:15px; flex-wrap:wrap; }
+  .return-key{ width:160px; height:60px; font-size:22px; border-radius:10px; background:#4caf50; color:#fff; }
+  .bs-key{ width:100px; height:60px; font-size:20px; border-radius:10px; background:#2196f3; color:#fff; }
+  #voiceBtn{ width:100px; height:60px; font-size:20px; border-radius:10px; background:#2196f3; color:#fff; }
+  .list-container, .result-container{ max-height:180px; overflow-y:auto; margin-top:15px; border:1px solid #ccc; padding:10px; border-radius:10px; background:#fafafa; }
+  .entry-item{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; padding:6px; border-bottom:1px solid #eee; }
+  #currentInputDisplay{ font-size:22px; margin-top:10px; font-weight:bold; color:#333; border:2px solid #888; border-radius:8px; padding:8px 12px; display:inline-block; min-width:220px; min-height:40px; }
+  table{ width:100%; border-collapse:collapse; font-size:14px; }
+  th, td{ border-bottom:1px solid #ddd; padding:6px; text-align:left; }
+  .modal{ display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; }
+  .modal-content{ background:white; padding:18px; border-radius:10px; width:90%; max-width:360px; text-align:center; }
+  .modal-content input, .modal-content select{ width:80%; font-size:16px; margin:8px 0; text-align:center; padding:6px; }
+</style>
+</head>
+<body>
+<h2>周回走アプリ by Popolo v1.16.2</h2>
+
+<div class="option-buttons">
+  <button onclick="openClassModal()">クラス</button>
+  <button onclick="showAllRanks()">全体順位</button>
+  <button onclick="hideResults()">隠す</button>
+  <button onclick="exportCSV()">CSV</button>
+</div>
+
+<div class="color-buttons">
+  <button class="color-red" onclick="setColor('赤')"></button>
+  <button class="color-blue" onclick="setColor('青')"></button>
+  <button class="color-yellow" onclick="setColor('黄')"></button>
+  <button class="color-green" onclick="setColor('緑')"></button>
+  <button class="color-pink" onclick="setColor('ピンク')"></button>
+  <button class="color-orange" onclick="setColor('オレンジ')"></button>
+  <button class="color-none" onclick="setColor('色なし')"></button>
+</div>
+
+<div id="currentInputDisplay"></div>
+
+<div class="keypad">
+  <button onclick="addDigit('1')">1</button>
+  <button onclick="addDigit('2')">2</button>
+  <button onclick="addDigit('3')">3</button>
+  <button onclick="addDigit('4')">4</button>
+  <button onclick="addDigit('5')">5</button>
+  <button onclick="addDigit('6')">6</button>
+  <button onclick="addDigit('7')">7</button>
+  <button onclick="addDigit('8')">8</button>
+  <button onclick="addDigit('9')">9</button>
+  <button onclick="addDigit('0')">0</button>
+</div>
+
+<div class="special-keys">
+  <button class="bs-key" onclick="backspace()">← BS</button>
+  <button class="return-key" onclick="submitEntry()">⏎ リターン</button>
+  <button id="voiceBtn" onclick="toggleVoice()">🎤</button>
+</div>
+
+<div class="list-container" id="inputList"></div>
+<div class="result-container" id="results"></div>
+
+<!-- クラス選択モーダル -->
+<div class="modal" id="classModal">
+  <div class="modal-content">
+    <h3>クラス（色）を選択</h3>
+    <select id="classColorSelect">
+      <option value="">選択してください</option>
+      <option value="赤">赤</option>
+      <option value="青">青</option>
+      <option value="黄">黄</option>
+      <option value="緑">緑</option>
+      <option value="ピンク">ピンク</option>
+      <option value="オレンジ">オレンジ</option>
+      <option value="色なし">色なし</option>
+    </select><br><br>
+    <button onclick="showClassRanks()">表示</button>
+    <button onclick="closeClassModal()">閉じる</button>
+  </div>
+</div>
+
+<!-- 訂正モーダル -->
+<div class="modal" id="editModal">
+  <div class="modal-content">
+    <h3>訂正／削除</h3>
+    <label>色を選択:</label>
+    <select id="editColor">
+      <option value="赤">赤</option>
+      <option value="青">青</option>
+      <option value="黄">黄</option>
+      <option value="緑">緑</option>
+      <option value="ピンク">ピンク</option>
+      <option value="オレンジ">オレンジ</option>
+      <option value="色なし">色なし</option>
+    </select>
+    <div>
+      <label>番号を入力:</label>
+      <input type="text" id="editInput" placeholder="新しい番号を入力">
+    </div>
+    <div style="margin-top:10px;">
+      <button onclick="saveCorrection()">保存</button>
+      <button onclick="deleteEntry()">削除</button>
+      <button onclick="closeEditModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* データ構造
+ entries: passごとの記録配列。各要素は { color, number, time }。
+ 順位は entries を集計して、
+   laps = count of passes,
+   lastTime = latest pass time (time when they reached that lap)
+ でソート：laps desc, lastTime asc
+*/
+
+let currentInput = '';
+let selectedColor = '';
+let entries = []; // 通過履歴（時間付き）
+let editIndex = null;
+let editingEntryIndex = null; // 訂正対象の index（entry list 上のインデックスではなく、entries 配列の index を使う）
+
+/* UI 更新 */
+function setColor(color) {
+  selectedColor = color;
+  updateCurrentDisplay();
+}
+function addDigit(digit) {
+  currentInput += digit;
+  updateCurrentDisplay();
+}
+function backspace() {
+  currentInput = currentInput.slice(0, -1);
+  updateCurrentDisplay();
+}
+function updateCurrentDisplay() {
+  const disp = document.getElementById('currentInputDisplay');
+  if (!selectedColor && !currentInput) {
+    disp.textContent = '';
+  } else {
+    disp.textContent = `${selectedColor}${currentInput ? ' ' + currentInput : ''}`;
+  }
+}
+
+/* 入力確定：タイムスタンプを付けて entries に追加 */
+function submitEntry() {
+  if (!selectedColor || !currentInput) {
+    alert('色と番号を選択してください');
+    return;
+  }
+  const now = Date.now();
+  entries.push({ color: selectedColor, number: currentInput, time: now });
+  currentInput = '';
+  // 選択色は残す or クリアするかは運用次第。ここでは色は残して連続入力を想定して残す。
+  updateCurrentDisplay();
+  renderEntries();
+  // 全体順位や現在のフィルターが表示中なら再計算して表示
+  updateResults(); 
+}
+
+/* 入力履歴を表示（新しい順） */
+function renderEntries() {
+  const list = document.getElementById('inputList');
+  // 新しい順（最新を上）に表示する場合は逆順にする
+  const items = entries.slice().reverse().map((e, i) => {
+    // i は reversed index; 元配列 index を取得
+    const origIndex = entries.length - 1 - i;
+    return `<div class='entry-item'>
+      <span>${e.color} - ${e.number}</span>
+      <div>
+        <button onclick='openEditModal(${origIndex})'>訂正</button>
+      </div>
+    </div>`;
+  });
+  list.innerHTML = items.join('');
+  list.scrollTop = 0;
+}
+
+/* --- 訂正関連 --- */
+function openEditModal(entryIdx) {
+  // entryIdx は entries の index
+  editingEntryIndex = entryIdx;
+  const entry = entries[entryIdx];
+  document.getElementById('editColor').value = entry.color;
+  document.getElementById('editInput').value = entry.number;
+  document.getElementById('editModal').style.display = 'flex';
+}
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+  editingEntryIndex = null;
+}
+function saveCorrection() {
+  if (editingEntryIndex === null) return;
+  const newColor = document.getElementById('editColor').value;
+  const newNum = document.getElementById('editInput').value.trim();
+  if (!newNum) { alert('番号を入力してください'); return; }
+  // 訂正したら、そのエントリの time を現在時刻に更新（その周回に到達した時刻が変わる想定）
+  entries[editingEntryIndex].color = newColor;
+  entries[editingEntryIndex].number = newNum;
+  entries[editingEntryIndex].time = Date.now();
+  closeEditModal();
+  renderEntries();
+  updateResults();
+}
+function deleteEntry() {
+  if (editingEntryIndex === null) return;
+  entries.splice(editingEntryIndex, 1);
+  closeEditModal();
+  renderEntries();
+  updateResults();
+}
+
+/* --- クラスモード（モーダルで色選択） --- */
+function openClassModal() {
+  document.getElementById('classModal').style.display = 'flex';
+}
+function closeClassModal() {
+  document.getElementById('classModal').style.display = 'none';
+}
+function showClassRanks() {
+  const color = document.getElementById('classColorSelect').value;
+  if (!color) { alert('色を選択してください'); return; }
+  updateResults(color);
+  closeClassModal();
+}
+
+/* 全体順位表示、隠す */
+function showAllRanks() { updateResults(null); }
+function hideResults() { document.getElementById('results').innerHTML = ''; }
+
+/* CSV 出力（簡易） */
+function exportCSV() {
+  // 集計（全体）
+  const table = computeRanking(null);
+  if (table.length === 0) { alert('データがありません'); return; }
+  let csv = '順位,色,番号,周回,最終到達時刻\n';
+  table.forEach((r, i) => {
+    csv += `${i+1},${r.color},${r.number},${r.laps},${new Date(r.lastTime).toLocaleString()}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'results.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* --- 集計・表示ロジック --- */
+/* filterColor: null or '赤' etc.
+   returns sorted array of objects: { color, number, laps, lastTime }
+*/
+function computeRanking(filterColor = null) {
+  // 集計用マップ
+  const map = {}; // key -> { color, number, laps, lastTime }
+  entries.forEach(e => {
+    if (filterColor && e.color !== filterColor) return;
+    const key = `${e.color}||${e.number}`;
+    if (!map[key]) map[key] = { color: e.color, number: e.number, laps: 0, lastTime: 0 };
+    map[key].laps += 1;
+    // lastTime は最新の time（＝その選手が現在のラップ数に到達した時刻）
+    if (e.time > map[key].lastTime) map[key].lastTime = e.time;
+  });
+  const list = Object.values(map);
+  // ソート：laps 降順、同じなら lastTime 昇順（先に到達したほうが上）
+  list.sort((a,b) => {
+    if (b.laps !== a.laps) return b.laps - a.laps;
+    return a.lastTime - b.lastTime;
+  });
+  return list;
+}
+
+/* 表示更新（filterColor があればクラス表示） */
+function updateResults(filterColor = null) {
+  const ranked = computeRanking(filterColor);
+  const results = document.getElementById('results');
+  if (ranked.length === 0) {
+    results.innerHTML = '<div>対象データがありません</div>';
+    return;
+  }
+  let title = filterColor ? `${filterColor} クラス順位` : '全体順位';
+  let html = `<h3>${title}</h3>`;
+  html += '<table><tr><th>順位</th><th>色</th><th>番号</th><th>周回</th><th>到達時刻</th></tr>';
+  ranked.forEach((r, i) => {
+    html += `<tr>
+      <td>${i+1}</td>
+      <td>${r.color}</td>
+      <td>${r.number}</td>
+      <td>${r.laps}</td>
+      <td>${new Date(r.lastTime).toLocaleTimeString()}</td>
+    </tr>`;
+  });
+  html += '</table>';
+  results.innerHTML = html;
+}
+
+/* 音声（ダミー） */
+function toggleVoice() { alert('音声入力開始/停止（未実装）'); }
+
+/* 初期化（テスト用に少しデータを入れて確認したければここ） */
+// entries.push({color:'赤', number:'5', time: Date.now()-60000});
+// entries.push({color:'青', number:'12', time: Date.now()-50000});
+// entries.push({color:'赤', number:'5', time: Date.now()-30000});
+// renderEntries(); updateResults();
+</script>
+</body>
+</html>
+
