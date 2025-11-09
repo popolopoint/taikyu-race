@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>周回走アプリ by Popolo v1.15.8</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Hiragino Kaku Gothic ProN', 'メイリオ', Meiryo, sans-serif; margin: 10px; text-align: center; }
+.color-buttons button { width: 50px; height: 50px; border-radius: 50%; margin: 5px; border: none; }
+.color-red { background: red; } .color-blue { background: blue; } .color-yellow { background: yellow; }
+.color-green { background: green; } .color-pink { background: pink; } .color-orange { background: orange; }
+.color-none { background: #ccc; }
+.keypad { display: grid; grid-template-columns: repeat(3, 70px); gap: 10px; justify-content: center; margin-top: 10px; }
+.keypad button { height: 60px; font-size: 20px; }
+.special-keys { display: flex; justify-content: center; gap: 15px; margin-top: 15px; flex-wrap: wrap; }
+.return-key { width: 160px; height: 70px; background: #4caf50; color: white; font-size: 22px; border-radius: 10px; }
+.bs-key { width: 70px; height: 60px; background: #2196f3; color: white; font-size: 20px; border-radius: 8px; }
+#voiceBtn { width: 70px; height: 60px; background: #2196f3; color: white; font-size: 20px; border-radius: 8px; }
+.option-buttons { margin-top: 10px; display: flex; justify-content: center; gap: 10px; }
+.option-buttons button { font-size: 14px; padding: 8px 12px; }
+.list-container, .result-container { max-height: 150px; overflow-y: auto; margin-top: 15px; border: 1px solid #ccc; padding: 10px; border-radius: 10px; }
+.entry-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #eee; }
+.entry-item button { font-size: 14px; padding: 2px 6px; margin-left: 4px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border-bottom: 1px solid #ddd; padding: 5px; }
+#currentInputDisplay { font-size: 24px; margin-top: 10px; font-weight: bold; color: #333; border: 2px solid #888; border-radius: 8px; padding: 5px 10px; display: inline-block; min-width: 200px; min-height: 40px; }
+.modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+.modal-content { background: white; padding: 20px; border-radius: 10px; text-align: center; width: 80%; max-width: 320px; }
+.modal-content input, .modal-content select { width: 80%; font-size: 18px; margin: 10px 0; text-align: center; }
+</style>
+</head>
+<body>
+<h2>周回走アプリ by Popolo v1.15.8</h2>
+
+<div class="option-buttons">
+  <button onclick="enterClassMode()">クラス</button>
+  <button onclick="showAllRanks()">全体順位</button>
+  <button onclick="hideResults()">隠す</button>
+  <button onclick="exportCSV()">CSV</button>
+</div>
+
+<div class="color-buttons">
+  <button class="color-red" onclick="setColor('赤')"></button>
+  <button class="color-blue" onclick="setColor('青')"></button>
+  <button class="color-yellow" onclick="setColor('黄')"></button>
+  <button class="color-green" onclick="setColor('緑')"></button>
+  <button class="color-pink" onclick="setColor('ピンク')"></button>
+  <button class="color-orange" onclick="setColor('オレンジ')"></button>
+  <button class="color-none" onclick="setColor('色なし')"></button>
+</div>
+
+<div id="currentInputDisplay"></div>
+
+<div class="keypad">
+  <button onclick="addDigit('1')">1</button>
+  <button onclick="addDigit('2')">2</button>
+  <button onclick="addDigit('3')">3</button>
+  <button onclick="addDigit('4')">4</button>
+  <button onclick="addDigit('5')">5</button>
+  <button onclick="addDigit('6')">6</button>
+  <button onclick="addDigit('7')">7</button>
+  <button onclick="addDigit('8')">8</button>
+  <button onclick="addDigit('9')">9</button>
+  <button onclick="addDigit('0')">0</button>
+</div>
+
+<div class="special-keys">
+  <button class="bs-key" onclick="backspace()">← BS</button>
+  <button class="return-key" onclick="submitEntry()">⏎ リターン</button>
+  <button id="voiceBtn" onclick="toggleVoice()">🎤</button>
+</div>
+
+<div class="list-container" id="inputList"></div>
+<div class="result-container" id="results"></div>
+
+<!-- モーダル -->
+<div class="modal" id="editModal">
+  <div class="modal-content">
+    <h3>訂正／削除</h3>
+    <label>色を選択:</label>
+    <select id="editColor">
+      <option value="赤">赤</option>
+      <option value="青">青</option>
+      <option value="黄">黄</option>
+      <option value="緑">緑</option>
+      <option value="ピンク">ピンク</option>
+      <option value="オレンジ">オレンジ</option>
+      <option value="色なし">色なし</option>
+    </select>
+    <label>番号を入力:</label>
+    <input type="text" id="editInput" placeholder="新しい番号を入力">
+    <div>
+      <button onclick="saveCorrection()">保存</button>
+      <button onclick="deleteEntry()">削除</button>
+      <button onclick="closeModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentInput = '';
+let selectedColor = '';
+let entries = [];
+let editIndex = null;
+
+function setColor(color) { selectedColor = color; updateCurrentDisplay(); }
+function addDigit(digit) { currentInput += digit; updateCurrentDisplay(); }
+function backspace() { currentInput = currentInput.slice(0,-1); updateCurrentDisplay(); }
+
+function updateCurrentDisplay() {
+  let display = '';
+  if(selectedColor) display += selectedColor;
+  if(currentInput) display += (display ? ' ' : '') + currentInput;
+  document.getElementById('currentInputDisplay').textContent = display;
+}
+
+function submitEntry() {
+  if(selectedColor && currentInput) {
+    entries.push({color:selectedColor, number:currentInput});
+    currentInput = ''; selectedColor = '';
+    updateCurrentDisplay(); renderEntries();
+  } else { alert('色と番号を選択してください'); }
+}
+
+function renderEntries() {
+  const list = document.getElementById('inputList');
+  list.innerHTML = entries.map((e,i)=>`
+    <div class='entry-item'>
+      ${e.color} - ${e.number}
+      <button onclick='openEditModal(${i})'>訂正</button>
+    </div>
+  `).join('');
+}
+
+function openEditModal(index) {
+  editIndex=index;
+  document.getElementById('editColor').value=entries[index].color;
+  document.getElementById('editInput').value=entries[index].number;
+  document.getElementById('editModal').style.display='flex';
+}
+function saveCorrection() {
+  if(editIndex!==null){
+    entries[editIndex].color=document.getElementById('editColor').value;
+    entries[editIndex].number=document.getElementById('editInput').value;
+    editIndex=null;
+    document.getElementById('editModal').style.display='none';
+    renderEntries();
+  }
+}
+function deleteEntry(){
+  if(editIndex!==null){
+    entries.splice(editIndex,1);
+    editIndex=null;
+    document.getElementById('editModal').style.display='none';
+    renderEntries();
+  }
+}
+function closeModal(){ document.getElementById('editModal').style.display='none'; editIndex=null; }
+
+function showAllRanks() {
+  updateResults();
+  document.getElementById('results').style.display='block';
+}
+
+function enterClassMode() {
+  const color = prompt('クラス（色）を入力してください（赤、青、黄、緑、ピンク、オレンジ、色なし）');
+  if(color) updateResults(color);
+  document.getElementById('results').style.display='block';
+}
+
+function hideResults() { document.getElementById('results').style.display='none'; }
+
+function updateResults(filterColor=null){
+  const counts = {};
+  entries.forEach(e=>{
+    if(filterColor && e.color!==filterColor) return;
+    const key=e.color+'-'+e.number;
+    if(!counts[key]) counts[key]={color:e.color, number:e.number, laps:0};
+    counts[key].laps++;
+  });
+  const ranked = Object.values(counts).sort((a,b)=>b.laps-a.laps);
+  let html = '<table><tr><th>順位</th><th>色</th><th>番号</th><th>周回</th></tr>';
+  ranked.forEach((r,i)=>{ html += `<tr><td>${i+1}</td><td>${r.color}</td><td>${r.number}</td><td>${r.laps}</td></tr>`; });
+  html+='</table>';
+  document.getElementById('results').innerHTML=html;
+}
+
+function exportCSV(){
+  let csv='順位,色,番号,周回\n';
+  const counts = {};
+  entries.forEach(e=>{
+    const key=e.color+'-'+e.number;
+    if(!counts[key]) counts[key]={color:e.color, number:e.number, laps:0};
+    counts[key].laps++;
+  });
+  const ranked=Object.values(counts).sort((a,b)=>b.laps-a.laps);
+  ranked.forEach((r,i)=> csv+=`${i+1},${r.color},${r.number},${r.laps}\n`);
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download='results.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function toggleVoice(){ alert('音声入力開始/停止'); }
+</script>
+</body>
+</html>
