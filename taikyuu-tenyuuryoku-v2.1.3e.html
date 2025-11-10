@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>周回走アプリ by Popolo v2.1.3e.</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Hiragino Kaku Gothic ProN', 'メイリオ', Meiryo, sans-serif; margin: 10px; text-align: center; }
+  .color-buttons button { width: 40px; height: 40px; border-radius: 50%; margin: 5px; border: none; }
+  .color-red { background: red; } .color-blue { background: blue; } .color-yellow { background: yellow; }
+  .color-green { background: green; } .color-pink { background: pink; } .color-orange { background: orange; }
+  .color-none { background: #ccc; }
+  .keypad { display: grid; grid-template-columns: repeat(3, 70px); gap: 10px; justify-content: center; margin-top: 10px; }
+  .keypad button { height: 60px; font-size: 20px; }
+  .special-keys { display: flex; justify-content: center; gap: 15px; margin-top: 15px; flex-wrap: wrap; }
+  .special-keys button { height: 60px; font-size: 22px; border-radius: 10px; }
+  .return-key { width: 105px; background: #4caf50; color: white; font-size: 20px; }
+  .bs-key, #voiceBtn { width: 70px; height: 60px;background: #2196f3; color: white; font-size: 20px; }
+  .option-buttons { margin-top: 10px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .option-buttons button { font-size: 14px; padding: 8px 12px; }
+  .list-container, .result-container { max-height: 200px; overflow-y: auto; margin-top: 15px; border: 1px solid #ccc; padding: 10px; border-radius: 10px; text-align: left; }
+  .entry-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #eee; }
+  .entry-item button { font-size: 14px; padding: 2px 6px; margin-left: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid #ddd; padding: 5px; text-align: center; }
+
+ #inputBox {
+  font-size: 20px;
+  width: 150px;
+  height: 60px;
+  text-align: center;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+  #classSelect { font-size: 18px; margin-top: 10px; display:none; padding: 8px 12px; width: 120px; }
+  .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+  .modal-content { background: white; padding: 20px; border-radius: 10px; text-align: center; width: 80%; max-width: 320px; }
+  .modal-content input, .modal-content select { width: 80%; font-size: 18px; margin: 10px 0; text-align: center; }
+</style>
+</head>
+<body>
+<h2>周回走アプリ by Popolo v2.1.3e</h2>
+
+<div class="option-buttons">
+  <button onclick="enterClassMode()">ｸﾗｽ順位</button>
+  <button onclick="showAllRanks()">全体順位</button>
+  <button onclick="hideResults()">隠す</button>
+  <button onclick="exportCSV()">CSV</button>
+</div>
+
+<div class="color-buttons">
+  <button class="color-red" onclick="setColor('赤')"></button>
+  <button class="color-blue" onclick="setColor('青')"></button>
+  <button class="color-yellow" onclick="setColor('黄')"></button>
+  <button class="color-green" onclick="setColor('緑')"></button>
+  <button class="color-pink" onclick="setColor('ピンク')"></button>
+  <button class="color-orange" onclick="setColor('オレンジ')"></button>
+  <button class="color-none" onclick="setColor('色なし')"></button>
+</div>
+
+<!-- 入力窓とリターンキー -->
+<div style="display:flex; justify-content:center; align-items:center; margin-top:10px; gap:10px;">
+
+
+  <input type="text" id="inputBox" placeholder="色＋番号" style="font-size:20px; width:150px; height:60px; text-align:center;">
+ <button class="bs-key" onclick="backspace()">← BS</button>
+  <button class="return-key" onclick="submitEntry()">⏎ リターン</button>
+</div>
+
+<div class="keypad">
+  <button onclick="addDigit('1')">1</button>
+  <button onclick="addDigit('2')">2</button>
+  <button onclick="addDigit('3')">3</button>
+  <button onclick="addDigit('4')">4</button>
+  <button onclick="addDigit('5')">5</button>
+  <button onclick="addDigit('6')">6</button>
+  <button onclick="addDigit('7')">7</button>
+  <button onclick="addDigit('8')">8</button>
+  <button onclick="addDigit('9')">9</button>
+  <button onclick="addDigit('0')">0</button>
+  <button onclick="addDigit('?')">?</button>
+  
+</div>
+
+<select id="classSelect" onchange="showClassRank()">
+  <option value="">色を選択してください</option>
+  <option value="赤">赤</option>
+  <option value="青">青</option>
+  <option value="黄">黄</option>
+  <option value="緑">緑</option>
+  <option value="ピンク">ピンク</option>
+  <option value="オレンジ">オレンジ</option>
+  <option value="色なし">色なし</option>
+</select>
+
+<div class="list-container" id="inputList"></div>
+<div class="result-container" id="results"></div>
+
+<!-- 訂正モーダル -->
+<div class="modal" id="editModal">
+  <div class="modal-content">
+    <h3>訂正／削除</h3>
+    <label>色:</label>
+    <select id="editColor">
+      <option value="赤">赤</option>
+      <option value="青">青</option>
+      <option value="黄">黄</option>
+      <option value="緑">緑</option>
+      <option value="ピンク">ピンク</option>
+      <option value="オレンジ">オレンジ</option>
+      <option value="色なし">色なし</option>
+    </select>
+    <label>番号:</label>
+    <input type="text" id="editNumber" placeholder="番号">
+    <div>
+      <button onclick="saveCorrection()">保存</button>
+      <button onclick="deleteEntryAt(editIndex)">削除</button>
+      <button onclick="closeModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let selectedColor = '';
+let entries = [];
+let editIndex = null;
+
+// 漢数字→半角数字
+function kanjiToNumber(str){
+  const map = { '零':0,'〇':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9 };
+  return str.replace(/[〇零一二三四五六七八九]/g, m => map[m]);
+}
+
+// 全角数字→半角
+function fullWidthToHalfWidth(str){
+  return str.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0)-0xFEE0));
+}
+
+// 入力文字列を正規化
+function normalizeInput(val){
+  val = val.replace(/の|番/g,'');   // 「の」「番」削除
+  val = kanjiToNumber(val);
+  val = fullWidthToHalfWidth(val);
+  return val;
+}
+
+function setColor(color){
+  selectedColor = color;
+  let box = document.getElementById('inputBox');
+  box.value = color;
+  box.focus();
+}
+
+function addDigit(digit){
+  let box = document.getElementById('inputBox');
+  box.value += digit;
+  box.focus();
+}
+
+function backspace(){
+  let box = document.getElementById('inputBox');
+  box.value = box.value.slice(0,-1);
+  box.focus();
+}
+
+function submitEntry(){
+  let box = document.getElementById('inputBox');
+  let val = box.value.trim();
+  if(!val){ alert('色と番号を入力'); return; }
+
+  val = normalizeInput(val); // 入力文字列を正規化
+
+  entries.push({value: val, time: Date.now()});
+  box.value = '';
+  selectedColor = '';
+  renderEntries();
+}
+
+
+
+
+
+
+
+
+function renderEntries(){
+  const list = document.getElementById('inputList');
+  list.innerHTML = '';
+
+  // 最新のものを上に表示（entriesを逆順にループ）
+  [...entries].slice().reverse().forEach((e, i) => {
+    let index = entries.length - 1 - i; // 元の配列での正しいインデックス
+    let div = document.createElement('div');
+    div.className = 'entry-item';
+    div.innerHTML = `${e.value} <span><button onclick="openEditModal(${index})">訂正</button><button onclick="deleteEntryAt(${index})">削除</button></span>`;
+    list.appendChild(div);
+  });
+}
+
+
+function openEditModal(i){
+  editIndex = i;
+  let entry = entries[i];
+  let match = entry.value.match(/^(赤|青|黄|緑|ピンク|オレンジ|色なし)/);
+  document.getElementById('editColor').value = match ? match[0] : '色なし';
+  document.getElementById('editNumber').value = entry.value.replace(/^(赤|青|黄|緑|ピンク|オレンジ|色なし)/,'');
+  document.getElementById('editModal').style.display='flex';
+}
+
+function saveCorrection(){
+  if(editIndex===null) return;
+  let color = document.getElementById('editColor').value;
+  let num = normalizeInput(document.getElementById('editNumber').value.trim());
+  if(!num){ alert('番号を入力してください'); return; }
+  entries[editIndex].value = color+num;
+  entries[editIndex].time = Date.now();
+  closeModal();
+  renderEntries();
+}
+
+function deleteEntryAt(i){
+  entries.splice(i,1);
+  renderEntries();
+}
+
+function closeModal(){
+  document.getElementById('editModal').style.display='none';
+  editIndex = null;
+}
+
+function enterClassMode(){
+  document.getElementById('classSelect').style.display='inline-block';
+}
+
+function formatTime(ts){
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+function showClassRank(){
+  const color = document.getElementById('classSelect').value;
+  if(!color) return;
+  const filtered = entries.filter(e=>e.value.startsWith(color));
+  const counts = {};
+  filtered.forEach(e=> counts[e.value]=(counts[e.value]||0)+1 );
+  const ranked = Object.keys(counts).sort((a,b)=>{
+    if(counts[b]!==counts[a]) return counts[b]-counts[a];
+    const ta = filtered.find(en=>en.value===a).time;
+    const tb = filtered.find(en=>en.value===b).time;
+    return ta - tb;
+  });
+  let html = `<h4>${color}クラス順位</h4><table><tr><th>順位</th><th>色＋番号</th><th>周回数</th><th>時刻</th></tr>`;
+  ranked.forEach((v,i)=>{
+    const t = filtered.find(en=>en.value===v).time;
+    html+=`<tr><td>${i+1}</td><td>${v}</td><td>${counts[v]}</td><td>${formatTime(t)}</td></tr>`;
+  });
+  html+=`</table>`;
+  document.getElementById('results').innerHTML = html;
+  document.getElementById('results').style.display='block';
+}
+
+function showAllRanks(){
+  const counts = {};
+  entries.forEach(e=> counts[e.value]=(counts[e.value]||0)+1 );
+  const ranked = Object.keys(counts).sort((a,b)=>{
+    if(counts[b]!==counts[a]) return counts[b]-counts[a];
+    const ta = entries.find(en=>en.value===a).time;
+    const tb = entries.find(en=>en.value===b).time;
+    return ta - tb;
+  });
+  let html = `<h4>全体順位</h4><table><tr><th>順位</th><th>色＋番号</th><th>周回数</th><th>時刻</th></tr>`;
+  ranked.forEach((v,i)=>{
+    const t = entries.find(en=>en.value===v).time;
+    html+=`<tr><td>${i+1}</td><td>${v}</td><td>${counts[v]}</td><td>${formatTime(t)}</td></tr>`;
+  });
+  html+=`</table>`;
+  document.getElementById('results').innerHTML = html;
+  document.getElementById('results').style.display='block';
+}
+
+function hideResults(){
+  document.getElementById('results').style.display='none';
+  document.getElementById('classSelect').style.display='none';
+}
+
+
+
+
+
+function exportCSV(){
+  if(entries.length === 0){
+    alert('データがありません');
+    return;
+  }
+
+  // 全体順位を集計
+  const counts = {};
+  entries.forEach(e=> counts[e.value]=(counts[e.value]||0)+1 );
+  const ranked = Object.keys(counts).sort((a,b)=>{
+    if(counts[b]!==counts[a]) return counts[b]-counts[a];
+    const ta = entries.find(en=>en.value===a).time;
+    const tb = entries.find(en=>en.value===b).time;
+    return ta - tb;
+  });
+
+  let csv = '【全体順位】\n　,順位,色＋番号,周回数,時刻\n';
+  ranked.forEach((v,i)=>{
+    const t = entries.find(en=>en.value===v).time;
+    csv += `　,${i+1},${v},${counts[v]},${formatTime(t)}\n`;
+  });
+
+  csv += '\n【クラス別順位】\n色,順位,色＋番号,周回数,時刻\n';
+  const colors = ['赤','青','黄','緑','ピンク','オレンジ','色なし'];
+  colors.forEach(color=>{
+    const filtered = entries.filter(e=>e.value.startsWith(color));
+    if(filtered.length === 0) return;
+
+    const classCounts = {};
+    filtered.forEach(e=> classCounts[e.value]=(classCounts[e.value]||0)+1 );
+    const classRanked = Object.keys(classCounts).sort((a,b)=>{
+      if(classCounts[b]!==classCounts[a]) return classCounts[b]-classCounts[a];
+      const ta = filtered.find(en=>en.value===a).time;
+      const tb = filtered.find(en=>en.value===b).time;
+      return ta - tb;
+    });
+
+    classRanked.forEach((v,i)=>{
+      const t = filtered.find(en=>en.value===v).time;
+      csv += `${color},${i+1},${v},${classCounts[v]},${formatTime(t)}\n`;
+    });
+    csv += '\n';
+  });
+
+  // CSVダウンロード
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'laprace.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function toggleVoice(){ alert('音声入力開始/停止'); }
+
+document.getElementById('inputBox').addEventListener('keydown', function(e){
+  if(e.key==='Enter'){ submitEntry(); }
+});
+</script>
+</body>
+</html>
