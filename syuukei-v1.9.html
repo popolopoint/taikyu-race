@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>セーリング/ウインド集計アプリ v1.9</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; }
+  table { border-collapse: collapse; margin-top: 20px; width: 100%; }
+  th, td { border: 1px solid #999; padding: 5px 10px; text-align: center; }
+  th { background-color: #eee; cursor: pointer; }
+  input { margin-bottom: 10px; }
+  .dns { color: red; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h2>セーリング/ウインド集計アプリ v1.9</h2>
+
+<label>種目: 
+  <select id="discipline">
+    <option value="yacht">ヨット／ウイングフォイル</option>
+    <option value="wind">ウインドサーフィン</option>
+  </select>
+</label>
+<br>
+
+<label>ヒート数に応じたカット設定（例：4:1,8:2）</label>
+<input type="text" id="cutSetting" placeholder="4:1,8:2">
+<br>
+
+<label>参加選手番号（カンマ区切り）:</label>
+<input type="text" id="participantList" placeholder="001,002,003,004">
+<br>
+
+<input type="file" id="csvFile" accept=".csv">
+<button onclick="handleCSV()">ヒート追加</button>
+<button onclick="downloadCSV()">総合結果をCSV出力</button>
+
+<div id="tableContainer"></div>
+
+<script>
+let results = {};  // 選手ごとのヒートポイント
+let heats = [];    // ヒート順
+let cutSettings = {}; // ヒート数に応じたカット数
+let participants = []; // 事前参加選手リスト
+let seriesCount = 0;   // 参加者数
+let currentSortAsc = true;
+
+function handleCSV(){
+    const fileInput = document.getElementById('csvFile');
+    if(!fileInput.files.length){ alert('CSVを選択してください'); return; }
+
+    const participantText = document.getElementById('participantList').value.trim();
+    if(!participantText){ alert('参加選手番号を入力してください'); return; }
+    participants = participantText.split(',').map(s=>s.trim());
+    seriesCount = participants.length;
+
+    participants.forEach(name=>{
+        if(!results[name]) results[name] = Array(heats.length).fill(seriesCount + 1);
+    });
+
+    const reader = new FileReader();
+    reader.onload = function(e){
+        const text = e.target.result;
+        parseCSV(text);
+        updateTable();
+    };
+    reader.readAsText(fileInput.files[0], 'utf-8');
+}
+
+// --- CSV解析 ---
+function parseCSV(text){
+    const lines = text.trim().split(/\r?\n/);
+    if(lines.length < 2) return;
+    let heatName = "Heat" + (heats.length + 1);
+    heats.push(heatName);
+
+    let heatPoints = {};
+    for(let i=1;i<lines.length;i++){
+        const cols = lines[i].split(',');
+        if(cols.length < 3) continue;
+        const rankStr = cols[1].trim();     
+        const colorNumber = cols[2].trim(); 
+        if(!participants.includes(colorNumber)) continue;
+        let rank = parseInt(rankStr,10);
+        heatPoints[colorNumber] = !isNaN(rank) ? rank : seriesCount + 1;
+    }
+
+    participants.forEach(name=>{
+        if(!results[name]) results[name] = Array(heats.length - 1).fill(seriesCount + 1);
+        results[name].push(heatPoints[name] !== undefined ? heatPoints[name] : seriesCount + 1);
+    });
+}
+
+// --- カット数取得 ---
+function getCutCount(heatCount){
+    let count = 0;
+    for(let key of Object.keys(cutSettings).sort((a,b)=>a-b)){
+        if(heatCount >= key) count = cutSettings[key];
+    }
+    return count;
+}
+
+// --- Netポイント計算 ---
+function calculateNetPoints(){
+    let netResults = {};
+    const discipline = document.getElementById('discipline').value;
+
+    for(let name of participants){
+        let points = results[name].slice();
+        let cutCount = getCutCount(points.length);
+        let cuts = [];
+
+        if(cutCount > 0){
+            let sorted = points.map((p,i)=>({p,i})).sort((a,b)=>b.p - a.p);
+            cuts = sorted.slice(0,cutCount).map(c=>c.p);
+        }
+
+        let totalPoints = points.reduce((a,b)=>a+b,0);
+        let netPoints = totalPoints - cuts.reduce((a,b)=>a+b,0);
+        netResults[name] = {points, cuts, net: netPoints, total: totalPoints};
+    }
+
+    let sortedNames = participants.slice();
+    sortedNames.sort((a,b)=>{
+        let na = netResults[a].net;
+        let nb = netResults[b].net;
+        if(na !== nb) return na - nb;
+        return discipline === "yacht" ? yachtTieBreaker(netResults[a], netResults[b])
+                                      : windTieBreaker(netResults[a], netResults[b]);
+    });
+
+    let rank = 1;
+    let finalResults = {};
+    sortedNames.forEach(name=>{
+        finalResults[name] = {...netResults[name], rank: rank++};
+    });
+
+    return finalResults;
+}
+
+// --- 同点処理 ---
+function yachtTieBreaker(a,b){
+    let aPoints = a.points.slice(0, a.points.length - a.cuts.length);
+    let bPoints = b.points.slice(0, b.points.length - b.cuts.length);
+    for(let i=0;i<Math.min(aPoints.length,bPoints.length);i++){
+        if(aPoints[i] !== bPoints[i]) return aPoints[i]-bPoints[i];
+    }
+    let aAll = a.points;
+    let bAll = b.points;
+    for(let i=aAll.length-1;i>=0;i--){
+        if(aAll[i] !== bAll[i]) return aAll[i]-bAll[i];
+    }
+    return 0;
+}
+
+function windTieBreaker(a,b){
+    let aCuts = a.cuts.slice().sort((x,y)=>x-y);
+    let bCuts = b.cuts.slice().sort((x,y)=>x-y);
+    for(let i=0;i<Math.min(aCuts.length,bCuts.length);i++){
+        if(aCuts[i] !== bCuts[i]) return aCuts[i]-bCuts[i];
+    }
+    let aAll = a.points.slice().sort((x,y)=>x-y);
+    let bAll = b.points.slice().sort((x,y)=>x-y);
+    for(let i=0;i<Math.min(aAll.length,bAll.length);i++){
+        if(aAll[i] !== bAll[i]) return aAll[i]-bAll[i];
+    }
+    for(let i=a.points.length-1;i>=0;i--){
+        if(a.points[i] !== b.points[i]) return a.points[i]-b.points[i];
+    }
+    return 0;
+}
+
+// --- テーブル表示 ---
+function updateTable(){
+    const cutText = document.getElementById('cutSetting').value;
+    cutSettings = {};
+    cutText.split(',').forEach(pair=>{
+        const [h,c] = pair.split(':').map(s=>parseInt(s.trim()));
+        if(h && c) cutSettings[h] = c;
+    });
+
+    const finalResults = calculateNetPoints();
+    let html = "<table id='resultsTable'><tr>";
+    html += "<th onclick='sortTable()'>順位 (クリックで昇順/降順)</th>";
+    html += "<th>選手名</th>";
+    html += "<th>カット前合計</th>";
+    heats.forEach(h=>html += `<th>${h}</th>`);
+    html += "<th>カット</th><th>Net</th></tr>";
+
+    for(let name of participants){
+        let r = finalResults[name];
+        html += `<tr>`;
+        html += `<td>${r.rank}</td><td>${name}</td>`;
+        html += `<td>${r.total}</td>`;
+        r.points.forEach(p=>{
+            let display = (p === seriesCount + 1) ? `<span class='dns'>${p}</span>` : p;
+            html += `<td>${display}</td>`;
+        });
+        html += `<td>(${r.cuts.join(',')})</td><td>${r.net}</td></tr>`;
+    }
+    html += "</table>";
+    document.getElementById('tableContainer').innerHTML = html;
+}
+
+// --- テーブルソート ---
+function sortTable(){
+    const table = document.getElementById('resultsTable');
+    const rows = Array.from(table.rows).slice(1);
+    rows.sort((a,b)=>{
+        const valA = parseInt(a.cells[0].textContent);
+        const valB = parseInt(b.cells[0].textContent);
+        return currentSortAsc ? valA - valB : valB - valA;
+    });
+    currentSortAsc = !currentSortAsc;
+    rows.forEach(r=>table.appendChild(r));
+}
+
+// --- CSV出力 ---
+function downloadCSV(){
+    const finalResults = calculateNetPoints();
+    let csv = "順位,選手名,カット前合計," + heats.join(",") + ",カット,Net\n";
+    for(let name of participants){
+        let r = finalResults[name];
+        csv += `${r.rank},${name},${r.total},${r.points.join(",")},(${r.cuts.join(',')}),${r.net}\n`;
+    }
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "総合結果_v1.9.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
